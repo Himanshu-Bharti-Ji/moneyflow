@@ -14,7 +14,11 @@ export async function createCustom(req: Request, res: Response, next: NextFuncti
   catch (err) { next(err); }
 }
 
-export async function removeCustom(req: Request, res: Response, next: NextFunction) {
-  try { res.json(await deleteCustomBudget(uid(req), req.params.id)); }
+export async function removeCustom(req: Request<{ id: string }>, res: Response, next: NextFunction) {
+  try {
+    const { id } = req.params;
+    if (Array.isArray(id) || !id) throw new Error('Invalid budget id');
+    res.json(await deleteCustomBudget(uid(req), id));
+  }
   catch (err) { next(err); }
 }
