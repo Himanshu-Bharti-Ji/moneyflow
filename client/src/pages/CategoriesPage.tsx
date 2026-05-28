@@ -311,7 +311,7 @@ function CategoryForm({
                   ? 'ring-2 scale-110'
                   : 'hover:bg-slate-100'
               }`}
-              style={selectedIcon === ic ? { ringColor: selectedColor, backgroundColor: selectedColor + '20' } : {}}
+              style={selectedIcon === ic ? { backgroundColor: selectedColor + '20' } : {}}
             >
               {ic}
             </button>
