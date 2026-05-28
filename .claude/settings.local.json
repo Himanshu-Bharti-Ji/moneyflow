@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Copy-Item \"C:\\\\Users\\\\dell\\\\Desktop\\\\himanshu_all_data\\\\money_management\\\\server\\\\.env.example\" \"C:\\\\Users\\\\dell\\\\Desktop\\\\himanshu_all_data\\\\money_management\\\\server\\\\.env\")",
+      "Bash(nslookup moneyflow.nogjcb9.mongodb.net)",
+      "Bash(curl -s --max-time 5 \"https://api.ipify.org\")",
+      "Bash(nslookup -type=SRV _mongodb._tcp.moneyflow.nogjcb9.mongodb.net 8.8.8.8)",
+      "Bash(nslookup moneyflow.nogjcb9.mongodb.net 8.8.8.8)",
+      "Bash(npx tsc *)",
+      "Bash(yarn dev *)",
+      "Bash(curl -s -X POST http://localhost:5000/api/auth/register -H 'Content-Type: application/json' -d '{\"name\":\"Test User\",\"email\":\"test@moneyflow.com\",\"password\":\"test123\"}')",
+      "Bash(curl -s -X POST http://localhost:5000/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"test@moneyflow.com\",\"password\":\"test123\"}')",
+      "Bash(Get-ChildItem -Name -Depth 0)"
+    ]
+  }
+}

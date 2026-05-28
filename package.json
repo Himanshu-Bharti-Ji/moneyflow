@@ -1,0 +1,11 @@
+{
+  "name": "moneyflow",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "cd client && yarn install --frozen-lockfile && yarn build && cd ../server && yarn install --frozen-lockfile && yarn build",
+    "start": "node server/dist/server.js",
+    "dev:client": "cd client && yarn dev",
+    "dev:server": "cd server && yarn dev"
+  }
+}

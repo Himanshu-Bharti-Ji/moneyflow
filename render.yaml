@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: moneyflow
+    env: node
+    region: singapore   # closest to India
+    plan: free
+    buildCommand: yarn build
+    startCommand: yarn start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      # Set these manually in Render dashboard (never commit real values):
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      # CLIENT_URL is optional — app auto-reads RENDER_EXTERNAL_URL if not set
