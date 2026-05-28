@@ -153,3 +153,32 @@ export interface ApiError {
   error: string;
   errors?: { field: string; message: string }[];
 }
+
+export interface CustomCategoryBudgetItem {
+  _id:        string;
+  categoryId: string;
+  name:       string;
+  color:      string;
+  icon:       string;
+  limit:      number;
+  spent:      number;
+  percentage: number;
+  status:     BudgetStatus;
+}
+
+export interface CustomBudgetData {
+  _id:               string;
+  name:              string;
+  startDate:         string;
+  endDate:           string;
+  overallLimit:      number;
+  totalSpent:        number;
+  overallPercentage: number;
+  overallStatus:     BudgetStatus;
+  categoryBudgets:   CustomCategoryBudgetItem[];
+  daysTotal:         number;
+  daysLeft:          number;
+  isActive:          boolean;
+  isPast:            boolean;
+  isFuture:          boolean;
+}
