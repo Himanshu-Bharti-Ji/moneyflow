@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
   SlidersHorizontal, Search, X, TrendingUp, TrendingDown,
-  ArrowLeftRight, ChevronLeft, ChevronRight,
+  ArrowLeftRight, ChevronLeft, ChevronRight, ChevronDown,
+  Wallet, Tag, CalendarDays, Receipt,
 } from 'lucide-react';
 import { useTransactions } from '../features/transactions/useTransactions';
 import { useAccounts }     from '../features/accounts/useAccounts';
@@ -459,6 +460,9 @@ function TransactionGroups({ transactions, accountMap, categoryMap, onDelete }: 
   categoryMap:  Record<string, Category>;
   onDelete:     (id: string) => void;
 }) {
+  // Only one row open at a time (accordion)
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
   const groups: Record<string, Transaction[]> = {};
   transactions.forEach((tx) => {
     const key = format(new Date(tx.date), 'yyyy-MM-dd');
@@ -490,7 +494,6 @@ function TransactionGroups({ transactions, accountMap, categoryMap, onDelete }: 
                     {formatCurrency(transferTotal)} transfer
                   </span>
                 )}
-                {/* Only show net if there are income/expense txs */}
                 {txs.some((tx) => tx.type !== 'transfer') && (
                   <p className={`text-xs font-bold ${dayNet >= 0 ? 'text-brand' : 'text-red-500'}`}>
                     {dayNet >= 0 ? '+' : ''}{formatCurrency(dayNet)}
@@ -500,8 +503,15 @@ function TransactionGroups({ transactions, accountMap, categoryMap, onDelete }: 
             </div>
             <div className="space-y-2">
               {txs.map((tx) => (
-                <TransactionRow key={tx._id} tx={tx}
-                  accountMap={accountMap} categoryMap={categoryMap} onDelete={onDelete} />
+                <TransactionRow
+                  key={tx._id}
+                  tx={tx}
+                  accountMap={accountMap}
+                  categoryMap={categoryMap}
+                  onDelete={onDelete}
+                  expanded={expandedId === tx._id}
+                  onToggle={() => setExpandedId(expandedId === tx._id ? null : tx._id)}
+                />
               ))}
             </div>
           </div>
@@ -511,12 +521,14 @@ function TransactionGroups({ transactions, accountMap, categoryMap, onDelete }: 
   );
 }
 
-/* ── Single row ── */
-function TransactionRow({ tx, accountMap, categoryMap, onDelete }: {
+/* ── Single row with accordion expand ── */
+function TransactionRow({ tx, accountMap, categoryMap, onDelete, expanded, onToggle }: {
   tx:          Transaction;
   accountMap:  Record<string, Account>;
   categoryMap: Record<string, Category>;
   onDelete:    (id: string) => void;
+  expanded:    boolean;
+  onToggle:    () => void;
 }) {
   const style   = TYPE_STYLE[tx.type];
   const account = accountMap[typeof tx.accountId === 'string' ? tx.accountId : (tx.accountId as Account)._id];
@@ -527,17 +539,32 @@ function TransactionRow({ tx, accountMap, categoryMap, onDelete }: {
     ? accountMap[typeof tx.transferAccountId === 'string' ? tx.transferAccountId : (tx.transferAccountId as Account)._id]
     : null;
 
+  const timeStr = new Date(tx.date).toLocaleTimeString('en-IN', {
+    timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true,
+  });
+  const fullDate = new Date(tx.date).toLocaleDateString('en-IN', {
+    timeZone: 'Asia/Kolkata', weekday: 'short', day: '2-digit', month: 'short', year: 'numeric',
+  });
+
   return (
-    <div className="card p-0 overflow-hidden">
-      <div className="flex items-center gap-3 p-3">
-        {/* Icon — category emoji or lucide type icon */}
+    <div className={`bg-white rounded-2xl shadow-sm border transition-all duration-200 overflow-hidden ${
+      expanded ? 'border-slate-200 shadow-md' : 'border-slate-100'
+    }`}>
+
+      {/* ── Collapsed header — always visible, tap to expand ── */}
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center gap-3 p-3 text-left focus:outline-none"
+      >
+        {/* Icon */}
         <div className={`w-10 h-10 rounded-2xl ${style.bg} flex items-center justify-center flex-shrink-0`}>
           {cat
             ? <span className="text-lg leading-none">{cat.icon}</span>
             : style.icon}
         </div>
 
-        {/* Info */}
+        {/* Title + subtitle */}
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-slate-800 truncate">
             {cat?.name ?? (tx.type === 'transfer' ? 'Transfer' : style.label)}
@@ -549,27 +576,88 @@ function TransactionRow({ tx, accountMap, categoryMap, onDelete }: {
           </p>
         </div>
 
-        {/* Amount + time in IST */}
-        <div className="text-right flex-shrink-0">
+        {/* Amount + time */}
+        <div className="text-right flex-shrink-0 mr-1">
           <p className={`font-bold text-sm ${style.text}`}>
             {tx.type === 'expense' ? '−' : tx.type === 'income' ? '+' : ''}
             {formatCurrency(tx.amount)}
           </p>
-          <p className="text-[10px] text-slate-400 mt-0.5">
-            {new Date(tx.date).toLocaleTimeString('en-IN', {
-              timeZone: 'Asia/Kolkata',
-              hour: '2-digit',
-              minute: '2-digit',
-              hour12: true,
-            })}
-          </p>
+          <p className="text-[10px] text-slate-400 mt-0.5">{timeStr}</p>
         </div>
 
-        {/* Delete */}
-        <button onClick={() => onDelete(tx._id)}
-          className="w-7 h-7 rounded-xl hover:bg-red-50 flex items-center justify-center text-slate-300 hover:text-red-400 transition-colors flex-shrink-0">
-          <Icon name="trash" size={13} />
-        </button>
+        {/* Expand chevron */}
+        <ChevronDown
+          size={16}
+          className={`text-slate-300 flex-shrink-0 transition-transform duration-300 ${expanded ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {/* ── Expanded detail — smooth height animation via grid trick ── */}
+      <div className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
+        expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+      }`}>
+        <div className="overflow-hidden">
+          <div className="border-t border-slate-100 mx-3" />
+          <div className="px-4 py-3 space-y-3">
+
+            {/* Notes — full text */}
+            {tx.notes && (
+              <div className="flex gap-3">
+                <Receipt size={14} className="text-slate-300 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-slate-600 leading-relaxed break-words flex-1">{tx.notes}</p>
+              </div>
+            )}
+
+            {/* Detail rows */}
+            <div className="space-y-2">
+              {/* Account */}
+              <div className="flex items-center gap-3">
+                <Wallet size={13} className="text-slate-300 flex-shrink-0" />
+                <span className="text-[11px] text-slate-400 w-16 flex-shrink-0">Account</span>
+                <span className="text-xs font-medium text-slate-700">
+                  {account?.name ?? '—'}
+                  {toAcc ? <span className="text-slate-400"> → {toAcc.name}</span> : null}
+                </span>
+              </div>
+
+              {/* Category */}
+              {cat && (
+                <div className="flex items-center gap-3">
+                  <Tag size={13} className="text-slate-300 flex-shrink-0" />
+                  <span className="text-[11px] text-slate-400 w-16 flex-shrink-0">Category</span>
+                  <span className="text-xs font-medium text-slate-700">{cat.icon} {cat.name}</span>
+                </div>
+              )}
+
+              {/* Date */}
+              <div className="flex items-center gap-3">
+                <CalendarDays size={13} className="text-slate-300 flex-shrink-0" />
+                <span className="text-[11px] text-slate-400 w-16 flex-shrink-0">Date</span>
+                <span className="text-xs font-medium text-slate-700">{fullDate} · {timeStr}</span>
+              </div>
+
+              {/* Type */}
+              <div className="flex items-center gap-3">
+                <span className="w-[13px] flex-shrink-0" />
+                <span className="text-[11px] text-slate-400 w-16 flex-shrink-0">Type</span>
+                <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${style.bg} ${style.text}`}>
+                  {style.label}
+                </span>
+              </div>
+            </div>
+
+            {/* Delete button */}
+            <div className="flex justify-end pt-1">
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete(tx._id); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-red-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+              >
+                <Icon name="trash" size={13} />
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

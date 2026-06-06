@@ -113,6 +113,16 @@ export async function listCustomBudgets(userId: string) {
   return Promise.all(budgets.map((b) => buildCustomBudgetResponse(userId, String(b._id))));
 }
 
+/* ── Get active custom budgets covering a specific date (for alert checks) ── */
+export async function getActiveCustomBudgetsForDate(userId: string, date: Date) {
+  const budgets = await CustomBudget.find({
+    userId,
+    startDate: { $lte: date },
+    endDate:   { $gte: date },
+  });
+  return Promise.all(budgets.map((b) => buildCustomBudgetResponse(userId, String(b._id))));
+}
+
 /* ── Delete ── */
 export async function deleteCustomBudget(userId: string, budgetId: string) {
   const budget = await CustomBudget.findOneAndDelete({ _id: budgetId, userId });

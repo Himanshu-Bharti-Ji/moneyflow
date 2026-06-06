@@ -49,7 +49,9 @@ export default function AccountsPage() {
   const handleUpdate = async (data: any) => {
     if (!editAccount) return;
     try {
-      await update(editAccount._id, data);
+      // Only pass fields the update endpoint accepts; strip type/openingBalance
+      const { name, color, icon, currentBalance } = data;
+      await update(editAccount._id, { name, color, icon, currentBalance });
       setEditAccount(null);
       toast('Account updated');
     } catch (e: any) {

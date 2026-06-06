@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { accountsApi, type CreateAccountData } from './accounts.api';
+import { accountsApi, type CreateAccountData, type UpdateAccountData } from './accounts.api';
 import type { Account } from '../../types';
 
 export function useAccounts() {
@@ -28,7 +28,7 @@ export function useAccounts() {
     return account;
   };
 
-  const update = async (id: string, data: Partial<CreateAccountData>) => {
+  const update = async (id: string, data: UpdateAccountData) => {
     const account = await accountsApi.update(id, data);
     setAccounts((prev) => prev.map((a) => (a._id === id ? account : a)));
     return account;

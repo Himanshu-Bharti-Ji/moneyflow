@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { AlertTriangle } from 'lucide-react';
 import type { Account } from '../../types';
 import Icon from '../../components/ui/Icon';
 
@@ -17,24 +18,36 @@ const ACCOUNT_TYPES = [
   { value: 'wallet',      label: 'Wallet',       icon: '👛' },
 ];
 
-const schema = z.object({
+/* Two separate schemas — create needs openingBalance, edit needs currentBalance */
+const createSchema = z.object({
   name:           z.string().min(1, 'Name is required').max(100),
   type:           z.enum(['cash', 'bank', 'credit_card', 'wallet']),
-  openingBalance: z.coerce.number(),
+  openingBalance: z.coerce.number({ invalid_type_error: 'Enter a number' }),
   color:          z.string(),
   icon:           z.string(),
 });
 
-type FormData = z.infer<typeof schema>;
+const editSchema = z.object({
+  name:           z.string().min(1, 'Name is required').max(100),
+  currentBalance: z.coerce.number({ invalid_type_error: 'Enter a number' }),
+  color:          z.string(),
+  icon:           z.string(),
+});
+
+type CreateFormData = z.infer<typeof createSchema>;
+type EditFormData   = z.infer<typeof editSchema>;
+type FormData       = CreateFormData | EditFormData;
 
 interface Props {
   account?:       Account;
-  onSubmit:       (data: FormData) => Promise<void>;
+  onSubmit:       (data: any) => Promise<void>;
   onCancel:       () => void;
   onDirtyChange?: (dirty: boolean) => void;
 }
 
 export default function AccountForm({ account, onSubmit, onCancel, onDirtyChange }: Props) {
+  const isEditing = !!account;
+
   const {
     register,
     handleSubmit,
@@ -42,20 +55,35 @@ export default function AccountForm({ account, onSubmit, onCancel, onDirtyChange
     setValue,
     reset,
     formState: { errors, isSubmitting, isDirty },
-  } = useForm<FormData>({
-    resolver: zodResolver(schema),
-    defaultValues: {
-      name:           account?.name           ?? '',
-      type:           account?.type           ?? 'cash',
-      openingBalance: account?.openingBalance ?? 0,
-      color:          account?.color          ?? '#10b981',
-      icon:           account?.icon           ?? 'wallet',
-    },
+  } = useForm<any>({
+    resolver: zodResolver(isEditing ? editSchema : createSchema),
+    defaultValues: isEditing
+      ? {
+          name:           account.name,
+          currentBalance: account.currentBalance,
+          color:          account.color,
+          icon:           account.icon,
+        }
+      : {
+          name:           '',
+          type:           'cash',
+          openingBalance: 0,
+          color:          '#10b981',
+          icon:           'wallet',
+        },
   });
 
-  useEffect(() => { if (account) reset({ ...account }); }, [account, reset]);
+  useEffect(() => {
+    if (account) {
+      reset({
+        name:           account.name,
+        currentBalance: account.currentBalance,
+        color:          account.color,
+        icon:           account.icon,
+      });
+    }
+  }, [account, reset]);
 
-  // Notify parent of dirty state
   useEffect(() => { onDirtyChange?.(isDirty); }, [isDirty, onDirtyChange]);
 
   const selectedColor = watch('color');
@@ -63,53 +91,86 @@ export default function AccountForm({ account, onSubmit, onCancel, onDirtyChange
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+
       {/* Name */}
       <div className="space-y-1">
         <label className="text-sm font-medium text-slate-700">Account Name</label>
         <input {...register('name')} className="input" placeholder="e.g. Main Bank Account" />
-        {errors.name && <p className="text-xs text-red-500">{errors.name.message}</p>}
+        {errors.name && <p className="text-xs text-red-500">{String(errors.name.message)}</p>}
       </div>
 
-      {/* Type */}
-      <div className="space-y-2">
-        <label className="text-sm font-medium text-slate-700">Account Type</label>
-        <div className="grid grid-cols-2 gap-2">
-          {ACCOUNT_TYPES.map((t) => (
-            <button
-              key={t.value}
-              type="button"
-              onClick={() => setValue('type', t.value as any)}
-              className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-medium transition-all ${
-                selectedType === t.value
-                  ? 'border-brand bg-brand/5 text-brand'
-                  : 'border-slate-200 text-slate-600 hover:border-slate-300'
-              }`}
-            >
-              <span>{t.icon}</span> {t.label}
-            </button>
-          ))}
+      {/* Account Type — only shown on create */}
+      {!isEditing && (
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-slate-700">Account Type</label>
+          <div className="grid grid-cols-2 gap-2">
+            {ACCOUNT_TYPES.map((t) => (
+              <button
+                key={t.value}
+                type="button"
+                onClick={() => setValue('type', t.value)}
+                className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-medium transition-all ${
+                  selectedType === t.value
+                    ? 'border-brand bg-brand/5 text-brand'
+                    : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                }`}
+              >
+                <span>{t.icon}</span> {t.label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Opening Balance */}
-      <div className="space-y-1">
-        <label className="text-sm font-medium text-slate-700">Opening Balance</label>
-        <div className="relative">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₹</span>
-          <input
-            {...register('openingBalance')}
-            type="number"
-            step="0.01"
-            className="input pl-8"
-            placeholder="0.00"
-            disabled={!!account}
-          />
+      {/* Opening Balance — create mode only */}
+      {!isEditing && (
+        <div className="space-y-1">
+          <label className="text-sm font-medium text-slate-700">Opening Balance</label>
+          <div className="relative">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₹</span>
+            <input
+              {...register('openingBalance')}
+              type="number"
+              step="0.01"
+              className="input pl-8"
+              placeholder="0.00"
+              inputMode="decimal"
+            />
+          </div>
+          {errors.openingBalance && <p className="text-xs text-red-500">{String(errors.openingBalance.message)}</p>}
         </div>
-        {account && (
-          <p className="text-xs text-slate-400">Opening balance cannot be changed after creation</p>
-        )}
-        {errors.openingBalance && <p className="text-xs text-red-500">{errors.openingBalance.message}</p>}
-      </div>
+      )}
+
+      {/* Current Balance — edit mode only */}
+      {isEditing && (
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-slate-700">Current Balance</label>
+          <div className="relative">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₹</span>
+            <input
+              {...register('currentBalance')}
+              type="number"
+              step="0.01"
+              className="input pl-8"
+              placeholder="0.00"
+              inputMode="decimal"
+            />
+          </div>
+          {errors.currentBalance && <p className="text-xs text-red-500">{String(errors.currentBalance.message)}</p>}
+          {/* Warn that this is a direct override, not a transaction */}
+          <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5">
+            <AlertTriangle size={13} className="text-amber-500 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-700">
+              This directly sets your balance. No transaction record will be created.
+              Use it to correct an opening balance mistake or sync with your real account.
+            </p>
+          </div>
+          {/* Show opening balance as read-only info */}
+          <p className="text-xs text-slate-400">
+            Opening balance: ₹{account?.openingBalance?.toLocaleString('en-IN') ?? '0'}
+          </p>
+        </div>
+      )}
 
       {/* Color */}
       <div className="space-y-2">
@@ -142,7 +203,7 @@ export default function AccountForm({ account, onSubmit, onCancel, onDirtyChange
               <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               Saving…
             </span>
-          ) : account ? 'Save Changes' : 'Create Account'}
+          ) : isEditing ? 'Save Changes' : 'Create Account'}
         </button>
       </div>
     </form>

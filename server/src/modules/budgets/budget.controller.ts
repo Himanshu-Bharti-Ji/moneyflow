@@ -19,6 +19,8 @@ export async function get(req: Request, res: Response, next: NextFunction) {
 
 export async function upsert(req: Request, res: Response, next: NextFunction) {
   try {
-    res.json(await upsertBudget(uid(req), req.body));
+    const data = await upsertBudget(uid(req), req.body);
+    if (data.hasBudget) checkBudgetAlerts(uid(req), data as BudgetData).catch(() => {});
+    res.json(data);
   } catch (err) { next(err); }
 }

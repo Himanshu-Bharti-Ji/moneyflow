@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { Transaction } from './transaction.model.js';
 import { Account }     from '../accounts/account.model.js';
 import type { CreateTransactionInput, UpdateTransactionInput, ListTransactionQuery } from './transaction.schema.js';
+import { triggerBudgetAlertsForDate } from '../budgets/budget-alerts.js';
 
 /* ── Balance helpers ── */
 async function applyBalance(
@@ -39,6 +40,12 @@ export async function createTransaction(userId: string, input: CreateTransaction
     }
 
     await session.commitTransaction();
+
+    // Fire-and-forget: check monthly + custom budget alerts after every expense
+    if (input.type === 'expense') {
+      triggerBudgetAlertsForDate(userId, input.date).catch(() => {});
+    }
+
     return tx;
   } catch (err) {
     await session.abortTransaction();

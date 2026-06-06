@@ -1,18 +1,19 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format } from 'date-fns';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, TrendingDown } from 'lucide-react';
 import { transactionsApi } from '../features/transactions/transactions.api';
+import { budgetsApi }      from '../features/budgets/budgets.api';
 import { useAccounts }     from '../features/accounts/useAccounts';
 import { useCategories }   from '../features/categories/useCategories';
 import { useConfirm }      from '../components/ui/ConfirmProvider';
 import { toast }           from '../components/ui/Toast';
 import Icon                from '../components/ui/Icon';
 import { formatCurrency }  from '../lib/currency';
-import type { TransactionType } from '../types';
+import type { BudgetData, CustomBudgetData, TransactionType } from '../types';
 
 /**
  * Build a UTC ISO string that stores the user-selected date with the CURRENT
@@ -65,11 +66,186 @@ const TYPE_CONFIG = {
   transfer: { label: 'Transfer', color: 'bg-blue-500', light: 'bg-blue-50',   text: 'text-blue-500', icon: '🔄' },
 };
 
+/* ─────────────────────────────────────────────────────────
+   Budget Impact — single unified card, shown only when
+   the user has typed an amount (amount > 0)
+   ───────────────────────────────────────────────────────── */
+
+type BudgetStatus = 'ok' | 'warning' | 'exceeded' | 'critical';
+
+const S: Record<BudgetStatus, { bar: string; pill: string; text: string }> = {
+  ok:       { bar: 'bg-emerald-500', pill: 'bg-emerald-100 text-emerald-700', text: 'text-emerald-700' },
+  warning:  { bar: 'bg-amber-400',   pill: 'bg-amber-100 text-amber-700',     text: 'text-amber-700'   },
+  exceeded: { bar: 'bg-orange-500',  pill: 'bg-orange-100 text-orange-600',   text: 'text-orange-600'  },
+  critical: { bar: 'bg-red-500',     pill: 'bg-red-100 text-red-600',         text: 'text-red-600'     },
+};
+const LABEL: Record<BudgetStatus, string> = {
+  ok: 'On track', warning: 'Warning', exceeded: 'Exceeded', critical: 'Critical',
+};
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function statusOf(pct: number): BudgetStatus {
+  if (pct >= 120) return 'critical';
+  if (pct >= 100) return 'exceeded';
+  if (pct >= 80)  return 'warning';
+  return 'ok';
+}
+
+function ImpactBar({ curPct, projPct, projStatus }: {
+  curPct: number; projPct: number; projStatus: BudgetStatus;
+}) {
+  const cur  = Math.min(curPct,  100);
+  const proj = Math.min(projPct, 100);
+  return (
+    <div className="relative h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+      {/* ghost: how far the projected bar extends beyond current */}
+      {proj > cur && (
+        <div className={`absolute inset-y-0 left-0 rounded-full opacity-25 transition-all duration-300 ${S[projStatus].bar}`}
+          style={{ width: `${proj}%` }} />
+      )}
+      {/* solid current */}
+      <div className={`absolute inset-y-0 left-0 rounded-full transition-all duration-300 ${S[projStatus].bar}`}
+        style={{ width: `${cur}%` }} />
+    </div>
+  );
+}
+
+interface BudgetRow {
+  id:         string;
+  label:      string;
+  spent:      number;
+  limit:      number;
+  curPct:     number;
+  curStatus:  BudgetStatus;
+  projSpent:  number;
+  projPct:    number;
+  projStatus: BudgetStatus;
+  remaining:  number;
+}
+
+function BudgetImpact({ date, amount }: { date: string; amount: number }) {
+  const [monthly, setMonthly] = useState<BudgetData | null>(null);
+  const [customs, setCustoms] = useState<CustomBudgetData[]>([]);
+
+  // Pre-fetch as soon as the component mounts / date changes.
+  // The UI stays hidden until amount > 0, but data is already ready.
+  useEffect(() => {
+    if (!date) return;
+    let cancelled = false;
+    const [y, m] = date.split('-').map(Number);
+    Promise.all([
+      budgetsApi.get(m, y).catch(() => null),
+      budgetsApi.listCustom().catch(() => [] as CustomBudgetData[]),
+    ]).then(([monthlyData, allCustom]) => {
+      if (cancelled) return;
+      setMonthly(monthlyData);
+      const txDate = new Date(date);
+      setCustoms(
+        (allCustom as CustomBudgetData[]).filter((b) => {
+          const start = new Date(b.startDate);
+          const end   = new Date(b.endDate + 'T23:59:59');
+          return txDate >= start && txDate <= end;
+        })
+      );
+    });
+    return () => { cancelled = true; };
+  }, [date]);
+
+  // Only render when user has typed an amount
+  if (amount <= 0) return null;
+
+  // Build rows
+  const rows: BudgetRow[] = [];
+
+  if (monthly?.hasBudget) {
+    const spent      = monthly.totalSpent;
+    const limit      = monthly.overallLimit;
+    const projSpent  = spent + amount;
+    const projPct    = limit > 0 ? Math.round((projSpent / limit) * 100) : 0;
+    const [y, m]     = date.split('-').map(Number);
+    rows.push({
+      id:         'monthly',
+      label:      `Monthly · ${MONTHS[m - 1]} ${y}`,
+      spent, limit,
+      curPct:     monthly.overallPercentage,
+      curStatus:  monthly.overallStatus as BudgetStatus,
+      projSpent,  projPct,
+      projStatus: statusOf(projPct),
+      remaining:  limit - projSpent,
+    });
+  }
+
+  customs.forEach((cb) => {
+    const spent     = cb.totalSpent;
+    const limit     = cb.overallLimit;
+    const projSpent = spent + amount;
+    const projPct   = limit > 0 ? Math.round((projSpent / limit) * 100) : 0;
+    rows.push({
+      id:         cb._id,
+      label:      cb.name || `${cb.startDate} – ${cb.endDate}`,
+      spent, limit,
+      curPct:     cb.overallPercentage,
+      curStatus:  cb.overallStatus as BudgetStatus,
+      projSpent,  projPct,
+      projStatus: statusOf(projPct),
+      remaining:  limit - projSpent,
+    });
+  });
+
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-100 bg-slate-50">
+        <TrendingDown size={13} className="text-slate-400" />
+        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Budget Impact</span>
+      </div>
+
+      {/* One row per budget */}
+      {rows.map((row, i) => (
+        <div key={row.id} className={i > 0 ? 'border-t border-slate-100' : ''}>
+          <div className="px-4 py-3 space-y-2">
+            {/* Name + status pill */}
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-slate-700 truncate">{row.label}</span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${S[row.projStatus].pill}`}>
+                {LABEL[row.projStatus]}
+              </span>
+            </div>
+
+            {/* Progress bar */}
+            <ImpactBar curPct={row.curPct} projPct={row.projPct} projStatus={row.projStatus} />
+
+            {/* Numbers: spent → projected · remaining/over */}
+            <div className="flex items-center justify-between text-[11px]">
+              <div className="flex items-center gap-1 text-slate-400">
+                <span>{formatCurrency(row.spent)}</span>
+                <span>→</span>
+                <span className={`font-bold ${S[row.projStatus].text}`}>{formatCurrency(row.projSpent)}</span>
+                <span className="text-slate-300">/ {formatCurrency(row.limit)}</span>
+              </div>
+              <span className={`font-bold ${row.remaining >= 0 ? 'text-slate-500' : 'text-red-500'}`}>
+                {row.remaining >= 0
+                  ? `${formatCurrency(row.remaining)} left`
+                  : `${formatCurrency(Math.abs(row.remaining))} over`}
+              </span>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function AddTransactionPage() {
   const navigate     = useNavigate();
   const [params]     = useSearchParams();
   const confirm      = useConfirm();
   const initialType  = (params.get('type') as TransactionType) || 'expense';
+
+  // Ref to the amount input for auto-focus
+  const amountRef = useRef<HTMLInputElement | null>(null);
 
   const { accounts }                          = useAccounts();
   const { expense: expCats, income: incCats } = useCategories();
@@ -93,8 +269,15 @@ export default function AddTransactionPage() {
   const type      = watch('type');
   const amount    = watch('amount');
   const accountId = watch('accountId');
+  const date      = watch('date');
   const cfg       = TYPE_CONFIG[type];
   const cats      = type === 'expense' ? expCats : incCats;
+
+  // Auto-focus amount input on mount and whenever the type tab changes
+  useEffect(() => {
+    const t = setTimeout(() => amountRef.current?.focus(), 80);
+    return () => clearTimeout(t);
+  }, [type]);
 
   // Selected account object (for balance check)
   const selectedAccount = accounts.find((a) => a._id === accountId);
@@ -137,6 +320,27 @@ export default function AddTransactionPage() {
         transferAccountId: data.transferAccountId || null,
       });
       toast('Transaction added');
+
+      // For expenses: refresh notification badge and show budget status hint
+      if (data.type === 'expense') {
+        window.dispatchEvent(new CustomEvent('mf:refresh-notifications'));
+        // Small delay to let server process budget alerts before we fetch budget
+        setTimeout(async () => {
+          try {
+            const [y, m] = data.date.split('-').map(Number);
+            const budget = await budgetsApi.get(m, y);
+            if (budget.hasBudget && budget.overallStatus !== 'ok') {
+              const msg: Record<string, string> = {
+                warning:  `⚠️ Budget warning — ${budget.overallPercentage}% used (₹${budget.totalSpent.toLocaleString('en-IN')} of ₹${budget.overallLimit.toLocaleString('en-IN')})`,
+                exceeded: `🚨 Budget exceeded — ${budget.overallPercentage}% used`,
+                critical: `🔴 Budget critical — ${budget.overallPercentage}% used`,
+              };
+              toast(msg[budget.overallStatus] ?? '', 'error');
+            }
+          } catch { /* non-blocking */ }
+        }, 600);
+      }
+
       navigate('/transactions');
     } catch (e: any) {
       toast(e.response?.data?.error ?? 'Failed to save', 'error');
@@ -179,12 +383,21 @@ export default function AddTransactionPage() {
           <div className="flex items-center gap-2">
             <span className={`text-3xl font-bold ${cfg.text}`}>₹</span>
             <input
-              {...register('amount')}
+              {...(() => {
+                const { ref, ...rest } = register('amount');
+                return {
+                  ...rest,
+                  ref: (el: HTMLInputElement | null) => {
+                    ref(el);
+                    amountRef.current = el;
+                  },
+                };
+              })()}
               type="number"
               step="0.01"
               placeholder="0.00"
+              inputMode="numeric"
               className={`bg-transparent text-3xl font-bold w-full outline-none ${cfg.text} placeholder:text-slate-300`}
-              inputMode="decimal"
             />
           </div>
           {errors.amount && <p className="text-xs text-red-500">{errors.amount.message}</p>}
@@ -297,6 +510,11 @@ export default function AddTransactionPage() {
             />
           </div>
         </div>
+
+        {/* Budget impact preview — only for expenses */}
+        {type === 'expense' && (
+          <BudgetImpact date={date} amount={Number(amount) || 0} />
+        )}
 
         {/* Submit */}
         <button

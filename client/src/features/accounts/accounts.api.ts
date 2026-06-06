@@ -2,11 +2,18 @@ import { api } from '../../lib/api';
 import type { Account } from '../../types';
 
 export interface CreateAccountData {
-  name: string;
-  type: string;
+  name:           string;
+  type:           string;
   openingBalance: number;
-  color: string;
-  icon: string;
+  color:          string;
+  icon:           string;
+}
+
+export interface UpdateAccountData {
+  name?:           string;
+  color?:          string;
+  icon?:           string;
+  currentBalance?: number;
 }
 
 export const accountsApi = {
@@ -16,7 +23,7 @@ export const accountsApi = {
   create: (data: CreateAccountData) =>
     api.post<{ account: Account }>('/accounts', data).then((r) => r.data.account),
 
-  update: (id: string, data: Partial<CreateAccountData>) =>
+  update: (id: string, data: UpdateAccountData) =>
     api.patch<{ account: Account }>(`/accounts/${id}`, data).then((r) => r.data.account),
 
   delete: (id: string) =>

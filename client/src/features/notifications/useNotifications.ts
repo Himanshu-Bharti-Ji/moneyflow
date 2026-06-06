@@ -52,7 +52,12 @@ export function useUnreadCount() {
   useEffect(() => {
     fetch();
     const id = setInterval(fetch, 30_000);
-    return () => clearInterval(id);
+    // Refresh immediately when an expense is recorded (fired by AddTransactionPage)
+    window.addEventListener('mf:refresh-notifications', fetch);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('mf:refresh-notifications', fetch);
+    };
   }, [fetch]);
 
   return { count, refresh: fetch };

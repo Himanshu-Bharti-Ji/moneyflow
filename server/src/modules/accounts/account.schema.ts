@@ -14,9 +14,10 @@ export const createAccountSchema = z.object({
 
 export const updateAccountSchema = z.object({
   body: z.object({
-    name:  z.string().min(1).max(100).optional(),
-    color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-    icon:  z.string().optional(),
+    name:           z.string().min(1).max(100).optional(),
+    color:          z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+    icon:           z.string().optional(),
+    currentBalance: z.coerce.number().optional(),
   }),
   params: z.object({ id: z.string().min(1) }),
 });
